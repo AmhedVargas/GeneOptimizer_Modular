@@ -39,9 +39,9 @@ rownames(IntronSeqs)=IntronSeqs$Name
 ##piRNA sequences, please note that Pies files requires renaming so it works as before
 PiesFin=read.csv("DATA/piRNA_sequence.csv",header=F,stringsAsFactors=F)
 #Format data
-Pies=as.character(PiesFin[,1])
-PiesNA=as.character(PiesFin[,2])
-PiesFin[,3]=as.character(PiesFin[,3])
+Pies=as.character(PiesFin[,2])
+PiesNA=as.character(PiesFin[,1])
+PiesFin=cbind(Pies,PiesNA,as.character(PiesFin[,3]))
 rownames(PiesFin)=as.character(Pies)
 ##New piRNA data
 extraPiinfo=read.table("DATA/piRNA_abundance.csv",sep=",",header=F,stringsAsFactors=F)
@@ -71,6 +71,8 @@ FivepData=read.csv("DATA/5pUTRs.csv",header=T,stringsAsFactors=F)
 ##3primeUTRS
 ThreepData=read.csv("DATA/3pUTRs.csv",header=T,stringsAsFactors=F)
 
+##Promoters
+PromoterSeqs=read.csv("DATA/Promoters.csv",header=T,stringsAsFactors=F)
 ####Functions
 {
   ##Sample a codon
@@ -1786,6 +1788,24 @@ HTML("<p align=\"justify\"><div class=\"explain\" style=\"display: none\" id=\"e
       <br><br>
       <b>3' UTRs.</b> The <i>tbb-2</i> 3'UTR is generally permissive for gene expression (<a href=\"https://pubmed.ncbi.nlm.nih.gov/18818082/\">Merritt & Seydoux, Curr. Bio., 2008</a>) but can be difficult to synthesize. <i>rps-1</i> and <i>rps-4</i> are short 3' UTRs from highly expressed ribosomal genes and are often easy to synthesize. Please note that we have not tested the quantitative effect of <i>rps-1</i> and <i>rps-4</i> on expression but synthetic genes with these 3' UTRs are expressed and can rescue phenotypes from single copy inserts (<i>e.g., unc-119</i>).
       </div></p>"),
+###Addition of promoters
+checkboxInput("checkPromoters", label = HTML("<b>Add a Promoter element
+                                                               [<a href=\"\" onclick=\"$('#explain_promoters').toggle(); return false;\">info</a>]
+                                                               </b>"), value = FALSE, width='100%'),
+conditionalPanel(condition = "input.checkPromoters==1",
+                 radioButtons("oppromo", label = HTML(""),
+                              #choices = list(
+                              #  "None" = 1, 
+                              #  "Fire lab synthetic spliced" = 2
+                              #),
+                              choiceNames=lapply(PromoterSeqs$UI_HTML,function(x){HTML(x)}),
+                              choiceValues= lapply(PromoterSeqs$UI_HTML,function(x){which(PromoterSeqs$UI_HTML==x)}),
+                              selected = 1, width='100%', inline = FALSE)
+                 
+),
+HTML("<p align=\"justify\"><div class=\"explain\" style=\"display: none\" id=\"explain_promoters\">
+                        We provide a selection of promoter sequences that we use currently in our lab.
+      </div></p>"),
 checkboxInput("checkEnzySites", label = HTML("<b>Remove restriction enzyme sites</b>"), value = FALSE, width='100%'),
 conditionalPanel(condition = "input.checkEnzySites==1",
                  fluidRow(
@@ -1986,7 +2006,7 @@ actionButton("actionSeq", label = "Optimize sequence")
       Flaframeint=input$checkintframe
     }
     
-    ##Now check introns
+    ##Now check UTRS
     FlaTURS=input$checkUTRs
     befUTR=""
     aftUTR=""
@@ -2002,8 +2022,19 @@ actionButton("actionSeq", label = "Optimize sequence")
     
     if(befUTR != ""){Fla5paaa=TRUE}
     
+    ###Now check if promoters will be added
+    FlaPro=input$checkPromoters
+    Proseq=""
+    Pronam=""
+    if(FlaPro){
+      Proseq=PromoterSeqs[as.integer(input$oppromo),"Sequence"]
+      Pronam=PromoterSeqs[as.integer(input$oppromo),"Name"]
+      }
+    ##If promoter added, add trailing A's
+    if(Proseq != ""){Fla5paaa=TRUE}
+    
     ##CHeck if user wants to look for issues with gene synthesis
-    ##THis is not anymore a separated analysis separated analysis
+    ##This is not anymore a separated analysis
     FlaTwisty=input$checkTwisty
     
     output$ErrorMessage <- renderText({""})
@@ -2208,11 +2239,18 @@ actionButton("actionSeq", label = "Optimize sequence")
       #}
       eeexxttpar=append(eeexxttpar,paste(paste(rownames(IntronSeqs[typeIn,])," intron",sep=""), " ",IntronSeqs[typeIn,"Sequence_1"],",",IntronSeqs[typeIn,"Sequence_2"],",",IntronSeqs[typeIn,"Sequence_3"],sep=""))
     }else{eeexxttpar=append(eeexxttpar,"Add introns: No")}
+    #UTRS
     if(FlaTURS){
       eeexxttpar=append(eeexxttpar,"Add UTRs: Yes")
       eeexxttpar=append(eeexxttpar,paste("5' UTR - ",nam5UTR," ",befUTR,sep=""))
       eeexxttpar=append(eeexxttpar,paste("3' UTR - ",nam3UTR," ",aftUTR,sep=""))
     }else{eeexxttpar=append(eeexxttpar,"Add UTRs: No")}
+    #Promoter
+    if(FlaPro){
+      eeexxttpar=append(eeexxttpar,"Add promoter: Yes")
+      eeexxttpar=append(eeexxttpar,paste("Promoter - ",Pronam," ",Proseq,sep=""))
+    }else{eeexxttpar=append(eeexxttpar,"Add promoter: No")}
+    
     if(Fla5paaa){
       eeexxttpar=append(eeexxttpar,"Add consensus start site: Yes")
     }else{eeexxttpar=append(eeexxttpar,"consensus start site: No")}
@@ -2770,8 +2808,8 @@ actionButton("actionSeq", label = "Optimize sequence")
         newseqend=paste(splitseqopt[(length(splitseqopt)-29):(length(splitseqopt))],sep="",collapse="")
         
         ###OK now make sure to put things in order, first optimized, if fla twisty, thingy for flatwisty, and finally original sequence
-        
-        SeqtoOpt=paste(befUTR,aaaads,SeqtoOpt,aftUTR,sep="",collapse="")
+        ##15/08/22: Add nor promoter sequence
+        SeqtoOpt=paste(Proseq,befUTR,aaaads,SeqtoOpt,aftUTR,sep="",collapse="")
         ###Graphical Output
         
         if((ErrorFlag == 0) & !is.null(SeqtoOpt)) {
@@ -2835,6 +2873,17 @@ actionButton("actionSeq", label = "Optimize sequence")
                 typpaterns=append(typpaterns,"3'UTR")
                 dftyp=append(dftyp,"3' UTR")
                 dfcol=append(dfcol, "#a9cce3")
+              }
+            }
+            ###If promoters
+            if(FlaPro){
+              if(Proseq !=""){
+                paterns=append(paterns,Pronam)
+                seqpaterns=append(seqpaterns,toupper(Proseq))
+                colpaterns=append(colpaterns,"#fad7a0")
+                typpaterns=append(typpaterns,"Promoter")
+                dftyp=append(dftyp,"Promoter")
+                dfcol=append(dfcol, "#fad7a0")
               }
             }
             if(FlaPi){
